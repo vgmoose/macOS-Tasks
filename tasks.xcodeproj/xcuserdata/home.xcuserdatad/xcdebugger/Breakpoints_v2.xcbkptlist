@@ -14,9 +14,25 @@
             filePath = "tasks/ContentView.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "47"
-            endingLineNumber = "47"
-            landmarkName = "getAllProcessesWithCLI()"
+            startingLineNumber = "97"
+            endingLineNumber = "97"
+            landmarkName = "getAllProcessesByCLI()"
+            landmarkType = "9">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "AFCE8CBB-BBCE-4518-9DBA-9947A123C897"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "tasks/ContentView.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "68"
+            endingLineNumber = "68"
+            landmarkName = "getAllProcesses()"
             landmarkType = "9">
          </BreakpointContent>
       </BreakpointProxy>

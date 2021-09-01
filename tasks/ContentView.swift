@@ -1,7 +1,6 @@
 import SwiftUI
 import Darwin
 
-
 func delete() {
 	print("Hello")
 }
@@ -17,7 +16,59 @@ func isSymlinkOrNonexistent(path: String) -> Bool {
 	return true
 }
 
-func getAllProcesses() -> [NSRunningApplication] {
+func getAllProcesses() -> [RunningProcess] {
+	// https://gist.github.com/kainjow/0e7650cc797a52261e0f4ba851477c2f
+	// https://ops.tips/blog/macos-pid-absolute-path-and-procfs-exploration/
+	let initialNumPids = PROC_PIDPATHINFO_SIZE
+	let buffer = UnsafeMutablePointer<pid_t>.allocate(capacity: Int(initialNumPids) + 20)
+	defer { buffer.deallocate() }
+	let bufferLength = initialNumPids * Int32(MemoryLayout<pid_t>.size)
+	print(initialNumPids)
+	// Call the function again with our inputs now ready
+	let numPids = proc_listallpids(buffer, bufferLength)
+	var out: [RunningProcess] = []
+	
+	var parentMap = [Int:[Int]]()
+
+	for x in 0..<numPids {
+		// pid number
+		let pid = buffer[Int(x)]
+		
+		// path of process
+		let pathBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(MAXPATHLEN))
+		defer { pathBuffer.deallocate() }
+		proc_pidpath(pid, pathBuffer, UInt32(MAXPATHLEN))
+		
+		// name of process
+		let nameBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: Int(MAXPATHLEN))
+		defer { nameBuffer.deallocate() }
+		proc_name(pid, nameBuffer, UInt32(MAXPATHLEN))
+		
+		// get all children, and mark them for later
+		let childBufferLen = Int(PROC_PIDPATHINFO_SIZE)
+		let childBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: childBufferLen)
+		defer { childBuffer.deallocate() }
+		proc_listchildpids(pid, childBuffer, Int32(childBufferLen))
+		let ipid = Int(pid)
+		for y in 0..<childBufferLen {
+			let childPid = childBuffer[Int(y)]
+			if parentMap[ipid] == nil {
+				parentMap[ipid] = []
+			}
+			parentMap[ipid]!.append(Int(childPid))
+		}
+		
+		// put it all together
+		out.append(RunningProcess(
+					pid: Int(pid),
+					path: String(cString: pathBuffer),
+					name: String(cString: nameBuffer)
+		))
+	}
+	return out
+}
+
+func getAllProcessesByCLI() -> [RunningProcess] {
 	let task = Process()
 	task.executableURL = URL(fileURLWithPath: "/bin/ps")
 	task.arguments = ["ax", "-o", "pid"]
@@ -37,14 +88,17 @@ func getAllProcesses() -> [NSRunningApplication] {
 			out.append(app)
 		}
 	}
-	print(out.count)
 	if (out.count == 0) {
 		// nothing running? maybe we were sandboxed, we can fallback to the running apps
 		let workspace = NSWorkspace.shared
 		print("Falling back to running apps")
-		return workspace.runningApplications
+		out = workspace.runningApplications
 	}
-	return out
+	return out.map { RunningProcess(
+		pid: Int($0.processIdentifier),
+		path: $0.executableURL?.absoluteString ?? "unknown",
+		name: $0.localizedName ?? "Unknown"
+	) }
 }
 
 struct ContentView: View {
@@ -59,7 +113,7 @@ struct ContentView: View {
 		 
 	 var out: [String] = []
 	 for app in applications {
-		 var path = app.executableURL?.absoluteString ?? "unknown"
+		 var path = app.path
 		 if path.hasPrefix(prefix) {
 			 path = String(path.dropFirst(prefix.count))
 		 }
@@ -91,7 +145,7 @@ struct ContentView: View {
 			}
 		 }
 //		 out.append(path)
-		out.append("(\(app.processIdentifier)) - \(app.localizedName ?? "Unknown")")
+		out.append("(\(app.pid)) - \(app.name)")
 	 }
 	 return out
  }
