@@ -1,10 +1,3 @@
-//
-//  tasksApp.swift
-//  tasks
-//
-//  Created by Ricky on 8/31/21.
-//
-
 import SwiftUI
 
 @main
