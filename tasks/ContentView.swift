@@ -19,7 +19,7 @@ func getAllProcesses() -> [RunningProcess] {
 	let buffer = UnsafeMutablePointer<pid_t>.allocate(capacity: Int(initialNumPids) + 20)
 	defer { buffer.deallocate() }
 	let bufferLength = initialNumPids * Int32(MemoryLayout<pid_t>.size)
-	print(initialNumPids)
+//	print(initialNumPids)
 	// Call the function again with our inputs now ready
 	let numPids = proc_listallpids(buffer, bufferLength)
 	var out: [RunningProcess] = []
@@ -87,7 +87,7 @@ func getAllProcessesByCLI() -> [RunningProcess] {
 	if (out.count == 0) {
 		// nothing running? maybe we were sandboxed, we can fallback to the running apps
 		let workspace = NSWorkspace.shared
-		print("Falling back to running apps")
+//		print("Falling back to running apps")
 		out = workspace.runningApplications
 	}
 	return out.map { RunningProcess(
@@ -100,7 +100,10 @@ func getAllProcessesByCLI() -> [RunningProcess] {
 struct ContentView: View {
 	var protectedDirs = Set<String>()
 	var unsafeDirs = Set<String>()
+    
     @State var processList: [String]
+    @State var task: String = ""
+    @State var hideSystem: Bool = true
 	
 	func getAllTasks(filtered: Bool) -> [String] {
         let applications = getAllProcesses()
@@ -140,7 +143,8 @@ struct ContentView: View {
 		 }
 //		 out.append(path)
          let paths = app.path.split(separator: "/")
-         out.append("(\(app.pid)) - \(app.name) - [\(paths[paths.count - 1])]")
+         let pathName = paths.count > 0 ? paths[paths.count - 1] : "Unknown"
+         out.append("(\(app.pid)) - \(app.name) - [\(pathName)]")
 	 }
 	 return out
  }
@@ -155,7 +159,7 @@ struct ContentView: View {
 			let last = parts.last ?? "unknown"
 			if first == "" && !isSymlinkOrNonexistent(path: last) {
 				// this a safe path! It has no first component, and the last one is an existing non-sym link
-				print("Safe: ", last)
+//				print("Safe: ", last)
 				self.protectedDirs.insert(last)
 			} else {
 				// we don't like it, maybe it's "*" wildcard, maybe something else, but either way we don't want it
@@ -167,26 +171,44 @@ struct ContentView: View {
 	init() {
         _processList = State(initialValue: [])
 		updateLists(filename: "/System/Library/Sandbox/rootless.conf")
-		let procs = getAllTasks(filtered: true)
+		let procs = getAllTasks(filtered: hideSystem)
         _processList = State(initialValue: procs)
+        
+//        DispatchQueue.main.async {
+        Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [self] timer in
+            self.processList = getAllTasks(filtered: hideSystem)
+        }
+//        }
 	}
-    
-    @State var task: String = ""
-    
+        
     var body: some View {
 		List(processList, id:\.self) { task in
-            Text(task)
-                .onTapGesture {
-                    self.task = task
-                }
-                .listRowBackground(self.task == task ? Color.accentColor : Color(NSColor.clear))
+            // https://stackoverflow.com/a/63181274
+            HStack {
+                Text(task)
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                self.task = task
+            }
+            .listRowBackground(self.task == task ? Color.accentColor : Color(NSColor.clear))
         }
 		.navigationTitle("Tasks")
 		.toolbar {
-//			Button(
-//				"Show System",
-//			   action: delete
-//			)
+			Toggle(
+				"Hide Protected",
+			   isOn: $hideSystem
+			)
+                .onChange(of: hideSystem) { value in
+                    processList = getAllTasks(filtered: hideSystem)
+                }
+//            Button(
+//                "Refresh",
+//                action: {
+//                    processList = getAllTasks(filtered: hideSystem)
+//                }
+//            )
 			Button(
 				"End Task",
                 action: self.delete
@@ -213,7 +235,7 @@ struct ContentView: View {
         task.waitUntilExit()
 
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        processList = getAllTasks(filtered: true)
+        processList = getAllTasks(filtered: hideSystem)
         self.task = ""
         if let output = String(data: data, encoding: .utf8) {
             if output != "" {
@@ -244,7 +266,7 @@ func matches(for regex: String, in text: String) -> [String] {
             String(text[Range($0.range, in: text)!])
         }
     } catch let error {
-        print("invalid regex: \(error.localizedDescription)")
+//        print("invalid regex: \(error.localizedDescription)")
         return []
     }
 }
