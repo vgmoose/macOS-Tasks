@@ -1,10 +1,6 @@
 import SwiftUI
 import Darwin
 
-func delete() {
-	print("Hello")
-}
-
 let prefix = "file://"
 
 func isSymlinkOrNonexistent(path: String) -> Bool {
@@ -104,12 +100,10 @@ func getAllProcessesByCLI() -> [RunningProcess] {
 struct ContentView: View {
 	var protectedDirs = Set<String>()
 	var unsafeDirs = Set<String>()
-	var processList: [String] = []
+    @State var processList: [String]
 	
 	func getAllTasks(filtered: Bool) -> [String] {
-	let applications = getAllProcesses()
-	print("Count")
-	print(applications.count)
+        let applications = getAllProcesses()
 		 
 	 var out: [String] = []
 	 for app in applications {
@@ -145,7 +139,8 @@ struct ContentView: View {
 			}
 		 }
 //		 out.append(path)
-		out.append("(\(app.pid)) - \(app.name)")
+         let paths = app.path.split(separator: "/")
+         out.append("(\(app.pid)) - \(app.name) - [\(paths[paths.count - 1])]")
 	 }
 	 return out
  }
@@ -170,11 +165,22 @@ struct ContentView: View {
 	}
 	
 	init() {
+        _processList = State(initialValue: [])
 		updateLists(filename: "/System/Library/Sandbox/rootless.conf")
-		processList = getAllTasks(filtered: true)
+		let procs = getAllTasks(filtered: true)
+        _processList = State(initialValue: procs)
 	}
+    
+    @State var task: String = ""
+    
     var body: some View {
-		List(processList, id:\.self) { Text($0) }
+		List(processList, id:\.self) { task in
+            Text(task)
+                .onTapGesture {
+                    self.task = task
+                }
+                .listRowBackground(self.task == task ? Color.accentColor : Color(NSColor.clear))
+        }
 		.navigationTitle("Tasks")
 		.toolbar {
 //			Button(
@@ -183,14 +189,62 @@ struct ContentView: View {
 //			)
 			Button(
 				"End Task",
-			   action: delete
+                action: self.delete
 			)
+                .disabled(self.task == "")
 		}
+    }
+    
+    func delete() {
+        // TODO: use a data structure instead of storing strings and unpacking
+        // https://stackoverflow.com/questions/36941365/swift-regex-for-extracting-words-between-parenthesis
+        let pids = matches(for: "^\\((?=.{0,10}\\)).*?\\)", in: self.task)
+        let pid = pids[0].trimmingCharacters(in: ["(", ")"])
+       
+        // https://stackoverflow.com/questions/45701825/kill-process-in-swift
+        // https://unix.stackexchange.com/a/102865
+        let pipe = Pipe()
+        let task = Process()
+        task.launchPath = "/usr/bin/command"
+        task.arguments = ["kill", "-9", pid]
+        task.standardOutput = pipe
+        task.standardError = pipe
+        task.launch()
+        task.waitUntilExit()
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        processList = getAllTasks(filtered: true)
+        self.task = ""
+        if let output = String(data: data, encoding: .utf8) {
+            if output != "" {
+                let alert = NSAlert()
+                alert.messageText = output
+                alert.addButton(withTitle: "OK")
+                alert.alertStyle = .warning
+                alert.runModal()
+            }
+        }
     }
 }
 
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
+    }
+}
+
+// https://stackoverflow.com/questions/27880650/swift-extract-regex-matches
+func matches(for regex: String, in text: String) -> [String] {
+
+    do {
+        let regex = try NSRegularExpression(pattern: regex)
+        let results = regex.matches(in: text,
+                                    range: NSRange(text.startIndex..., in: text))
+        return results.map {
+            String(text[Range($0.range, in: text)!])
+        }
+    } catch let error {
+        print("invalid regex: \(error.localizedDescription)")
+        return []
     }
 }
